@@ -123,6 +123,22 @@ function deploy_opsman() {
   --image-file "/tempdir/${opsman_filename}"  \
   --state-file /workdir/state/opsman_state.yml \
   --vars-file /workdir/control-plane-vars.yml
+
+  # Configure Ops Manager auth
+  om_target="$(awk '/target: / {print $2}' "${temp_dir}/env.yml")"
+
+  # shellcheck disable=SC2091
+  until $(curl --output /dev/null -k --silent --head --fail "${om_target}/setup"); do
+      printf '.'
+      sleep 5
+  done
+
+  echo "Setting up ops manager authentication"
+  docker_run om \
+  --env /tempdir/env.yml \
+  configure-authentication \
+  --config /workdir/templates/config/auth.yml \
+  --vars-file /workdir/control-plane-vars.yml
 }
 
 #############################################
