@@ -139,6 +139,20 @@ function deploy_opsman() {
   configure-authentication \
   --config /workdir/templates/config/auth.yml \
   --vars-file /workdir/control-plane-vars.yml
+
+  echo "Configuring bosh director"
+  docker_run om \
+  --env /tempdir/env.yml \
+  configure-director \
+  --config /workdir/templates/config/director-vsphere.yml \
+  --vars-file /workdir/control-plane-vars.yml
+
+  echo "Deploying bosh director"
+  docker_run om \
+  --env /tempdir/env.yml \
+  apply-changes \
+  --reattach \
+  --skip-deploy-products
 }
 
 #############################################
