@@ -1,0 +1,36 @@
+---
+opsman-configuration:
+  vsphere:
+    vcenter:
+      datacenter: ((vsphere_datacenter))
+      datastore: ((vsphere_datastore))
+      url: ((vcenter_url))
+      username: ((vcenter_username))
+      password: ((vcenter_password))
+      resource_pool: ((vsphere_resource_pool))
+      insecure: 1     # default - 0 (secure) | 1 (insecure)
+
+    disk_type: thin     # thin|thick
+    dns: ((dns))
+    gateway: ((control_plane_net_gateway))
+    hostname: ((ops_manager_dns))
+    netmask: ((control_plane_net_netmask))
+    network: ((control_plane_net))
+    ntp: ((ntp))
+    private_ip: ((ops_manager_private_ip))
+    ssh_public_key: ((ops_manager_ssh_public_key))
+
+    # Optional
+    # cpu: 1                         # default - 1
+    # memory: 8                      # default - 8 (GB)
+    # ssh_password: ((ssh-password)) # REQUIRED if ssh_public_key not defined
+                                     # (Ops Manager < 2.6 ONLY)
+    # vm_name: ops-manager-vm        # default - ops-manager-vm
+    # disk_size: 200                 # default - 160 (GB), only larger values allowed
+
+  # Optional Ops Manager UI Settings for upgrade-opsman
+  # ssl-certificate: ...
+  # pivotal-network-settings: ...
+  # banner-settings: ...
+  # syslog-settings: ...
+  # rbac-settings: ...

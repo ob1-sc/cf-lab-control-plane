@@ -95,7 +95,9 @@ function deploy_opsman() {
   # get the latest ops manager version if explicit version not set
   [ -z "$OPSMAN_VERSION" ] && OPSMAN_VERSION=`curl -s https://network.tanzu.vmware.com/api/v2/products/ops-manager/releases | jq -r '.releases | first | .version'`
 
-  if [ ! -f ${temp_dir}/ops-manager-vsphere-$OPSMAN_VERSION.ova ]; then
+  opsman_filename=ops-manager-vsphere-$OPSMAN_VERSION.ova
+
+  if [ ! -f ${temp_dir}/${opsman_filename} ]; then
   
     echo "Downloading ops manager version: $OPSMAN_VERSION"
     docker_run om download-product \
@@ -109,9 +111,18 @@ function deploy_opsman() {
     echo "Skipping ops manager download as version: $OPSMAN_VERSION is already present" 
   fi
 
+  echo "Generating ops manager environment file"
+  docker_run om interpolate \
+  --config /workdir/templates/env/env.yml \
+  --vars-file /workdir/control-plane-vars.yml \
+  > "${temp_dir}/env.yml"
 
-
-
+  echo "Deploying ops manager VM"
+  docker_run om nom create-vm \
+  --config /workdir/templates/config/opsman-vsphere.yml \
+  --image-file "/tempdir/${opsman_filename}"  \
+  --state-file /workdir/state/opsman_state.yml \
+  --vars-file /workdir/control-plane-vars.yml
 }
 
 #############################################
