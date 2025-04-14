@@ -4,20 +4,10 @@ az-configuration:
   clusters:
   - cluster: ((vsphere_cluster))
     drs_rule: MUST
-    # guid: 9e850a84673b88226c1a
-    # host_group: null
-    # resource_pool: null
-  # guid: e8299719ad17fca71f5d
 iaas-configurations:
-# - additional_cloud_properties: {}
-  # bosh_disk_path: pcf_disk
-  # bosh_template_folder: pcf_templates
-  # bosh_vm_folder: pcf_vms
 - datacenter: ((vsphere_datacenter))
   disk_type: thin
   enable_human_readable_name: true
-  # ensure_no_ip_conflicts: true
-  # ephemeral_datastore_clusters_string: ""
   ephemeral_datastores_string: ((vsphere_datastore))
   name: default
   nsx_address: ((nsx_address))
@@ -28,9 +18,7 @@ iaas-configurations:
   nsx_t_auth_type: local_user
   nsx_t_tag_nsx_vm_objects: true
   nsx_t_use_policy_api: true
-  # nsx_t_use_policy_api_migration_mode: false
   nsx_username: ((nsx_username))
-  # persistent_datastore_clusters_string: ""
   persistent_datastores_string: ((vsphere_datastore))
   ssl_verification_enabled: false
   vcenter_host: ((vcenter_url))
@@ -39,7 +27,6 @@ iaas-configurations:
 network-assignment:
   network:
     name: cp
-  # other_availability_zones: []
   singleton_availability_zone:
     name: az1
 networks-configuration:
@@ -56,77 +43,9 @@ networks-configuration:
       - az1
 properties-configuration:
   director_configuration:
-    # additional_ssh_users: []
-    # automatic_certificate_rotation_enabled: false
-    # blobstore_type: local
-    # bosh_director_recreate_on_next_deploy: false
-    # bosh_log_level: none
-    # bosh_recreate_on_next_deploy: false
-    # bosh_recreate_persistent_disks_on_next_deploy: false
-    # ca_certificate_duration: 1460
-    # database_type: internal
-    # director_metrics_server_enabled: true
-    # director_worker_count: 5
-    # duration_overrides_enabled: false
-    # encryption:
-    #   keys: []
-    #   providers: []
-    # hm_emailer_options:
-    #   enabled: false
-    # hm_pager_duty_options:
-    #   enabled: false
-    # identification_tags: {}
-    # job_configuration_on_tmpfs: false
-    # keep_unreachable_vms: false
-    # leaf_certificate_duration: 730
-    # local_blobstore_options:
-    #   enable_signed_urls: true
     ntp_servers_string: ((ntp))
-  #   post_deploy_enabled: false
-  #   resurrector_enabled: false
-  #   retry_bosh_deploys: false
-  #   short_lived_nats_bootstrap_credentials_enabled: false
-  #   skip_director_drain: false
-  #   system_metrics_runtime_enabled: true
-  # dns_configuration:
-  #   excluded_recursors: []
-  #   handlers: []
   security_configuration:
-    # clear_default_trusted_certificates_store: false
-    # generate_vm_passwords: true
     opsmanager_root_ca_trusted_certs: true
-#   syslog_configuration:
-#     enabled: false
-# resource-configuration:
-#   compilation:
-#     additional_networks: []
-#     additional_vm_extensions: []
-#     avi:
-#       pools: []
-#     instance_type:
-#       id: automatic
-#     instances: automatic
-#     nsxt:
-#       lb:
-#         server_pools: []
-#       ns_groups: []
-#     swap_as_percent_of_memory_size: automatic
-#   director:
-#     additional_networks: []
-#     additional_vm_extensions: []
-#     avi:
-#       pools: []
-#     instance_type:
-#       id: automatic
-#     instances: automatic
-#     nsxt:
-#       lb:
-#         server_pools: []
-#       ns_groups: []
-#     persistent_disk:
-#       name: automatic
-#       size_mb: automatic
-#     swap_as_percent_of_memory_size: automatic
 vmextensions-configuration:
   - name: concourse-lb
     cloud_properties:
@@ -136,5 +55,3 @@ vmextensions-configuration:
   - name: increased-disk
     cloud_properties:
       disk: 102400
-# vmtypes-configuration: {}
-
