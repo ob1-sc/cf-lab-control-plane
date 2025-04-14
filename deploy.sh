@@ -23,6 +23,7 @@ fi
 ### DEFINE VARIABLES (WITH OPTIONAL DEFAULTS) ###
 #################################################
 CLEANUP=${CLEANUP:-true}
+STEMCELL_LINE=${STEMCELL_LINE:-jammy}
 
 ########################
 ### DEFINE FUNCTIONS ###
@@ -35,6 +36,8 @@ function usage() {
   echo "PIVNET_API_TOKEN - API Token to access Tanzu network downloads"
   echo "PLATFORM_AUTOMATION_VERSION - The version of platform automation to use, if not set then latest will be selected"
   echo "OPSMAN_VERSION - The version of ops manager to deploy, if not set then latest will be selected"
+  echo "CONCOURSE_VERSION - The version of concourse to deploy, if not set then latest will be selected"
+  echo "STEMCELL_LINE - The stemcell line to use when deploying concourse, if not set then will default to jammy"
   echo "CLEANUP - Automatically cleans up downloaded artefacts, defaults to true"
   echo ""
   echo "Command line arguments:"
@@ -62,7 +65,7 @@ function prepare_docker() {
   # get the latest platform automation version if explicit version not set
   [ -z "$PLATFORM_AUTOMATION_VERSION" ] && PLATFORM_AUTOMATION_VERSION=`curl -s https://network.tanzu.vmware.com/api/v2/products/platform-automation/releases | jq -r '.releases | first | .version'`
 	
-  if [ "$(docker images -q "platform-automation-image:${PLATFORM_AUTOMATION_VERSION}")" == "" ]; then
+  if [ "$(docker images -q "platform-automation-image:$PLATFORM_AUTOMATION_VERSION")" == "" ]; then
     
     echo "Downloading platform automation docker image version: $PLATFORM_AUTOMATION_VERSION"
     om download-product \
@@ -70,10 +73,10 @@ function prepare_docker() {
     --pivnet-product-slug=platform-automation \
     --product-version="$PLATFORM_AUTOMATION_VERSION" \
     --file-glob='platform-automation-image-*.tgz' \
-    --output-directory="${temp_dir}/"
+    --output-directory="$temp_dir/"
 
     echo "Importing platform automation docker image version: $PLATFORM_AUTOMATION_VERSION to local docker daemon"
-    docker import ${temp_dir}/platform-automation-image-*.tgz "platform-automation-image:${PLATFORM_AUTOMATION_VERSION}"
+    docker import $temp_dir/platform-automation-image-*.tgz "platform-automation-image:$PLATFORM_AUTOMATION_VERSION"
 
   else
     echo "Skipping platform automation docker image download as version: $PLATFORM_AUTOMATION_VERSION is already present" 
@@ -83,12 +86,35 @@ function prepare_docker() {
 
 docker_run() {
   docker run \
-    --volume="${repo_root}:/workdir" \
-    --volume="${temp_dir}:/tempdir" \
+    --volume="$repo_root:/workdir" \
+    --volume="$temp_dir:/tempdir" \
     --workdir="/workdir" \
-    "platform-automation-image:${PLATFORM_AUTOMATION_VERSION}" \
+    "platform-automation-image:$PLATFORM_AUTOMATION_VERSION" \
     "$@"
 }
+
+# docker_bosh() {
+
+#   docker_run om interpolate \
+#   --config /workdir/templates/env/env.yml \
+#   --vars-file /workdir/control-plane-vars.yml \
+#   > "${temp_dir}/env.yml"
+
+#   docker_run om \
+#   --env /tempdir/env.yml bosh-env -b \
+#   > "${temp_dir}/bosh-env"
+
+#   # removing "export " from all lines in the bosh-env file
+#   sed -i 's/^export //' "${temp_dir}/bosh-env"
+
+#   docker run \
+#     --volume="${repo_root}:/workdir" \
+#     --volume="${temp_dir}:/tempdir" \
+#     --workdir="/workdir" \
+#     --env-file="${temp_dir}/bosh-env" \
+#     "platform-automation-image:${PLATFORM_AUTOMATION_VERSION}" \
+#     "$@"
+# }
 
 function deploy_opsman() {
 
@@ -97,7 +123,7 @@ function deploy_opsman() {
 
   opsman_filename=ops-manager-vsphere-$OPSMAN_VERSION.ova
 
-  if [ ! -f ${temp_dir}/${opsman_filename} ]; then
+  if [ ! -f $temp_dir/$opsman_filename ]; then
   
     echo "Downloading ops manager version: $OPSMAN_VERSION"
     docker_run om download-product \
@@ -115,20 +141,20 @@ function deploy_opsman() {
   docker_run om interpolate \
   --config /workdir/templates/env/env.yml \
   --vars-file /workdir/control-plane-vars.yml \
-  > "${temp_dir}/env.yml"
+  > "$temp_dir/env.yml"
 
   echo "Deploying ops manager VM"
   docker_run om nom create-vm \
   --config /workdir/templates/config/opsman-vsphere.yml \
-  --image-file "/tempdir/${opsman_filename}"  \
+  --image-file "/tempdir/$opsman_filename"  \
   --state-file /workdir/state/opsman_state.yml \
   --vars-file /workdir/control-plane-vars.yml
 
   # Configure Ops Manager auth
-  om_target="$(awk '/target: / {print $2}' "${temp_dir}/env.yml")"
+  om_target="$(awk '/target: / {print $2}' "$temp_dir/env.yml")"
 
   # shellcheck disable=SC2091
-  until $(curl --output /dev/null -k --silent --head --fail "${om_target}/setup"); do
+  until $(curl --output /dev/null -k --silent --head --fail "$om_target/setup"); do
       printf '.'
       sleep 5
   done
@@ -155,6 +181,77 @@ function deploy_opsman() {
   --skip-deploy-products
 }
 
+function upload_stemcell(){
+
+  STEMCELL_SLUG=stemcells-ubuntu-$STEMCELL_LINE
+  STEMCELL_GLOB=bosh-stemcell-*-vsphere-*.tgz
+
+  # get the latest stemcell version for the defined stemcell line
+  STEMCELL_VERSION=`curl -s https://network.tanzu.vmware.com/api/v2/products/$STEMCELL_SLUG/releases | jq -r '.releases | first | .version'`
+
+  echo "Downloading $STEMCELL_LINE stemcell version: $STEMCELL_VERSION"
+  docker_run om download-product \
+  --pivnet-api-token="$PIVNET_API_TOKEN" \
+  --pivnet-product-slug=$STEMCELL_SLUG \
+  --product-version="$STEMCELL_VERSION" \
+  --file-glob=$STEMCELL_GLOB \
+  --output-directory="/tempdir"
+
+  echo "Connecting to bosh"
+  eval "$(docker_run om --env /tempdir/env.yml bosh-env)"
+  bosh env # TODO use docker to run bosh
+
+  echo "Uploading $STEMCELL_LINE stemcell version: $STEMCELL_VERSION to bosh"
+  bosh upload-stemcell $temp_dir/$STEMCELL_GLOB # TODO use docker to run bosh
+}
+
+function upload_bosh_releases(){
+
+  CONCOURSE_SLUG=p-concourse
+
+  # get the latest concourse version if explicit version not set
+  [ -z "$CONCOURSE_VERSION" ] && CONCOURSE_VERSION=`curl -s https://network.tanzu.vmware.com/api/v2/products/$CONCOURSE_SLUG/releases | jq -r '.releases | first | .version'`
+
+  echo "Connecting to bosh"
+  eval "$(docker_run om --env /tempdir/env.yml bosh-env)"
+  bosh env # TODO use docker to run bosh
+
+  declare -a concourse_globs=("bosh-release-*.tgz" 
+                              "backup-and-restore-sdk-release-*.tgz" 
+                              "bpm-release-*.tgz"
+                              "concourse-bosh-release-*.tgz"
+                              "credhub-release-*.tgz"
+                              "postgres-release-*.tgz"
+                              "uaa-release-*.tgz")
+
+  ## iterate through the concourse globs
+  for glob in "${concourse_globs[@]}"
+  do
+
+    echo "Downloading $glob for version: $CONCOURSE_VERSION of $CONCOURSE_SLUG"
+    docker_run om download-product \
+    --pivnet-api-token="$PIVNET_API_TOKEN" \
+    --pivnet-product-slug=$CONCOURSE_SLUG \
+    --product-version="$CONCOURSE_VERSION" \
+    --file-glob=$glob \
+    --output-directory="/tempdir"
+    
+    downloaded_file=`ls $temp_dir/$glob`
+    echo "Uploading $downloaded_file for version: $CONCOURSE_VERSION of $CONCOURSE_SLUG to bosh"
+    bosh upload-release $downloaded_file
+
+    echo ""
+
+  done
+}
+
+# function deploy_concourse(){
+
+  
+
+
+# }
+
 #############################################
 ### Read parameters from the command line ###
 #############################################
@@ -172,6 +269,8 @@ function main() {
 
   prepare_docker
   deploy_opsman
+  upload_stemcell
+  upload_bosh_releases
   
 }
 
