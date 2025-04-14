@@ -59,7 +59,6 @@ function validate() {
   return 0
 }
 
-
 function prepare_docker() {
 
   # get the latest platform automation version if explicit version not set
@@ -117,9 +116,6 @@ docker_run() {
 # }
 
 function deploy_opsman() {
-
-  # get the latest ops manager version if explicit version not set
-  [ -z "$OPSMAN_VERSION" ] && OPSMAN_VERSION=`curl -s https://network.tanzu.vmware.com/api/v2/products/ops-manager/releases | jq -r '.releases | first | .version'`
 
   opsman_filename=ops-manager-vsphere-$OPSMAN_VERSION.ova
 
@@ -183,18 +179,14 @@ function deploy_opsman() {
 
 function upload_stemcell(){
 
-  STEMCELL_SLUG=stemcells-ubuntu-$STEMCELL_LINE
-  STEMCELL_GLOB=bosh-stemcell-*-vsphere-*.tgz
-
-  # get the latest stemcell version for the defined stemcell line
-  STEMCELL_VERSION=`curl -s https://network.tanzu.vmware.com/api/v2/products/$STEMCELL_SLUG/releases | jq -r '.releases | first | .version'`
-
+  stemcell_glob=bosh-stemcell-*-vsphere-*.tgz
+  
   echo "Downloading $STEMCELL_LINE stemcell version: $STEMCELL_VERSION"
   docker_run om download-product \
   --pivnet-api-token="$PIVNET_API_TOKEN" \
   --pivnet-product-slug=$STEMCELL_SLUG \
   --product-version="$STEMCELL_VERSION" \
-  --file-glob=$STEMCELL_GLOB \
+  --file-glob=$stemcell_glob \
   --output-directory="/tempdir"
 
   echo "Connecting to bosh"
@@ -202,22 +194,16 @@ function upload_stemcell(){
   bosh env # TODO use docker to run bosh
 
   echo "Uploading $STEMCELL_LINE stemcell version: $STEMCELL_VERSION to bosh"
-  bosh upload-stemcell $temp_dir/$STEMCELL_GLOB # TODO use docker to run bosh
+  bosh upload-stemcell $temp_dir/$stemcell_glob # TODO use docker to run bosh
 }
 
 function upload_bosh_releases(){
-
-  CONCOURSE_SLUG=p-concourse
-
-  # get the latest concourse version if explicit version not set
-  [ -z "$CONCOURSE_VERSION" ] && CONCOURSE_VERSION=`curl -s https://network.tanzu.vmware.com/api/v2/products/$CONCOURSE_SLUG/releases | jq -r '.releases | first | .version'`
 
   echo "Connecting to bosh"
   eval "$(docker_run om --env /tempdir/env.yml bosh-env)"
   bosh env # TODO use docker to run bosh
 
-  declare -a concourse_globs=("bosh-release-*.tgz" 
-                              "backup-and-restore-sdk-release-*.tgz" 
+  declare -a concourse_globs=("backup-and-restore-sdk-release-*.tgz" 
                               "bpm-release-*.tgz"
                               "concourse-bosh-release-*.tgz"
                               "credhub-release-*.tgz"
@@ -245,12 +231,52 @@ function upload_bosh_releases(){
   done
 }
 
-# function deploy_concourse(){
+function deploy_concourse(){
 
+  deployment_glob=*-bosh-deployment-*.tgz
+
+  echo "Downloading $deployment_glob for version: $CONCOURSE_VERSION of $CONCOURSE_SLUG"
+  docker_run om download-product \
+  --pivnet-api-token="$PIVNET_API_TOKEN" \
+  --pivnet-product-slug=$CONCOURSE_SLUG \
+  --product-version="$CONCOURSE_VERSION" \
+  --file-glob=$deployment_glob \
+  --output-directory="/tempdir"
+
+  concourse_dir="$temp_dir/concourse-bosh-deployment"
+  mkdir -p "$concourse_dir"
+  tar -C "$concourse_dir" -xzf `ls $temp_dir/$deployment_glob`
+
+  pushd ${temp_dir}
   
+    echo "Generating concourse vars file"
+    docker_run om interpolate \
+    --config /workdir/templates/config/concourse.yml \
+    --vars-file /workdir/control-plane-vars.yml \
+    > "$temp_dir/concourse-vars.yml"
 
+    # deploy concourse
+    bosh -n -d concourse deploy concourse-bosh-deployment/cluster/concourse.yml \
+      -o concourse-bosh-deployment/cluster/operations/privileged-http.yml \
+      -o concourse-bosh-deployment/cluster/operations/privileged-https.yml \
+      -o concourse-bosh-deployment/cluster/operations/basic-auth.yml \
+      -o concourse-bosh-deployment/cluster/operations/tls-vars.yml \
+      -o concourse-bosh-deployment/cluster/operations/tls.yml \
+      -o concourse-bosh-deployment/cluster/operations/uaa.yml \
+      -o concourse-bosh-deployment/cluster/operations/scale.yml \
+      -o concourse-bosh-deployment/cluster/operations/credhub-colocated.yml \
+      -o concourse-bosh-deployment/cluster/operations/offline-releases.yml \
+      -o concourse-bosh-deployment/cluster/operations/backup-atc-colocated-web.yml \
+      -o concourse-bosh-deployment/cluster/operations/secure-internal-postgres.yml \
+      -o concourse-bosh-deployment/cluster/operations/secure-internal-postgres-bbr.yml \
+      -o concourse-bosh-deployment/cluster/operations/secure-internal-postgres-uaa.yml \
+      -o concourse-bosh-deployment/cluster/operations/secure-internal-postgres-credhub.yml \
+      -o "${repo_root}/templates/config/concourse-ops.yml" \
+      -l $temp_dir/concourse-vars.yml \
+      -l concourse-bosh-deployment/versions.yml
+  popd
 
-# }
+}
 
 #############################################
 ### Read parameters from the command line ###
@@ -265,13 +291,23 @@ done
 ## Main script logic
 function main() {
 
+  # get the latest ops manager version if explicit version not set
+  OPSMAN_SLUG=ops-manager
+  [ -z "$OPSMAN_VERSION" ] && OPSMAN_VERSION=`curl -s https://network.tanzu.vmware.com/api/v2/products/$OPSMAN_SLUG/releases | jq -r '.releases | first | .version'`
 
+  # get the latest concourse version if explicit version not set
+  CONCOURSE_SLUG=p-concourse
+  [ -z "$CONCOURSE_VERSION" ] && CONCOURSE_VERSION=`curl -s https://network.tanzu.vmware.com/api/v2/products/$CONCOURSE_SLUG/releases | jq -r '.releases | first | .version'`
+
+  # get the latest stemcell version for the defined stemcell line
+  STEMCELL_SLUG=stemcells-ubuntu-$STEMCELL_LINE
+  STEMCELL_VERSION=`curl -s https://network.tanzu.vmware.com/api/v2/products/$STEMCELL_SLUG/releases | jq -r '.releases | first | .version'`
 
   prepare_docker
   deploy_opsman
   upload_stemcell
   upload_bosh_releases
-  
+  deploy_concourse
 }
 
 # validate and run the script

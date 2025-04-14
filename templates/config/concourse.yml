@@ -1,0 +1,37 @@
+# BOSH uses this to identify the deployment
+deployment_name: concourse
+
+# This can be any VM type from the cloud config: bosh cloud-config
+web_vm_type: large
+
+# This is the external concourse URL
+external_host: ((concourse_url))
+
+# This is the external concourse URL
+external_url: https://((concourse_url))
+
+# This can be any VM type from the cloud config: bosh cloud-config
+db_vm_type: large
+
+# This can be any disk type from the cloud config: bosh cloud-config
+db_persistent_disk_type: 102400
+
+# This can be any VM type from the cloud config: bosh cloud-config
+worker_vm_type: large
+
+# This assigns created VMs (web, worker, and db) to AZs in the IaaS
+azs: [ az1 ]
+
+# The network name to which to assign the VMs
+network_name: cp
+
+# The number of web instances
+web_instances: 1
+
+# The number of worker instances
+worker_instances: 1
+
+# The admin user/password
+local_user:
+  username: admin 
+  password: VMware1!

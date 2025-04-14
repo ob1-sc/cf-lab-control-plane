@@ -127,6 +127,14 @@ properties-configuration:
 #       name: automatic
 #       size_mb: automatic
 #     swap_as_percent_of_memory_size: automatic
-# vmextensions-configuration: []
+vmextensions-configuration:
+  - name: concourse-lb
+    cloud_properties:
+      nsxt:
+        ns_groups:
+        - cp_web
+  - name: increased-disk
+    cloud_properties:
+      disk: 102400
 # vmtypes-configuration: {}
 
